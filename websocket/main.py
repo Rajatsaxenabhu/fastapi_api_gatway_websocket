@@ -13,6 +13,8 @@ async def websocket_test(websocket:WebSocket):
     try:
         while True:
             data=await websocket.receive_text()
+            print("user id is ",websocket)
+            print("newdata is ",data)
             await websocket.send_text({data.upper()})
     except WebSocketDisconnect:
         clients.remove(websocket)

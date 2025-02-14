@@ -8,3 +8,8 @@ pydantic-settings
 psycopg2-binary
 python-decouple
 python-multipart
+pyjwt
+passlib[bcrypt]
+pydantic[email]
+uvicorn[standard]
+websockets
