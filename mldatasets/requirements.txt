@@ -1,0 +1,10 @@
+fastapi
+httpx
+uvicorn
+pydantic
+sqlalchemy
+alembic
+pydantic-settings
+psycopg2-binary
+python-decouple
+python-multipart
