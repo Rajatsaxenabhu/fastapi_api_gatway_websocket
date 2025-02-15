@@ -1,13 +1,12 @@
 import httpx
-from fastapi import HTTPException, Request, Response, status, File, UploadFile, Form
+from fastapi import Request, Response, status,WebSocket ,UploadFile
 from typing import List, Optional, Dict, Any, Union, Callable
 from importlib import import_module
 import base64
 from pydantic import BaseModel
-from contextlib import asynccontextmanager
 import functools
 from starlette.datastructures import UploadFile as StarletteUploadFile
-
+from httpx_ws import WebSocketUpgradeError,AsyncWebSocketSession
 
 class APIError(Exception):
     def __init__(self, status_code: int, detail: str, headers: Optional[Dict[str, str]] = None):
@@ -28,16 +27,15 @@ class AuthenticationError(APIError):
             headers={"WWW-Authenticate": "Bearer"}
         )
 
-class HTTPClient:
-    @staticmethod
-    @asynccontextmanager
-    async def get_client():
-        """Context manager for HTTP client"""
-        async with httpx.AsyncClient() as client:
-            yield client
 
-    @staticmethod
-    async def make_request(
+class AllClient:
+    def __init__(self):
+        self.active_conn:Dict[str,tuple[WebSocket,AsyncWebSocketSession]]
+
+    async def socket_request():
+        pass
+
+    async def http_request(
         url: str,
         method: str,
         data: Optional[Dict[str, Any]] = None,
@@ -45,57 +43,30 @@ class HTTPClient:
         params: Optional[Dict[str, Any]] = None,
         timeout: float = 30.0
     ) -> tuple[Any, int]:
-        """Make HTTP request with error handling
-        
-        Args:
-            url: Target URL
-            method: HTTP method
-            data: Request body data
-            headers: Request headers
-            params: Query string parameters
-            timeout: Request timeout in seconds
-        
-        Returns:
-            Tuple of (response data, status code)
-        """
         headers = headers or {}
         params = params or {}
-        
-        try:
-            async with HTTPClient.get_client() as client:
+        async with httpx.AsyncClient() as client:
+            try:
                 response = await client.request(
-                    method=method.upper(),
-                    url=url,
-                    json=data,
-                    headers=headers,
-                    params=params,
-                    timeout=timeout
+                method=method.upper(),
+                url=url,
+                json=data,
+                headers=headers,
+                params=params,
+                timeout=timeout
                 )
                 response.raise_for_status()
                 return response.json(), response.status_code
-                
-        except httpx.HTTPStatusError as e:
-            error_detail = (
-                e.response.json().get('detail', str(e))
-                if e.response.headers.get('content-type') == 'application/json'
-                else str(e)
-            )
-            raise APIError(
-                status_code=e.response.status_code,
-                detail=error_detail,
-                headers={'WWW-Authenticate': 'Bearer'}
-            )
-        except httpx.RequestError:
-            raise APIError(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail='Service is unavailable.',
-                headers={'WWW-Authenticate': 'Bearer'}
-            )
-        except Exception:
-            raise APIError(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail='Internal server error'
-            )
+            except httpx.HTTPStatusError as e:
+                raise APIError(
+                    status_code=e.response.status_code
+                )
+            except Exception as e:
+                raise APIError(
+                    status_code=e.response.status_code
+                )
+            finally:
+                await client.aclose()
 
 
 class ModuleImporter:
@@ -123,7 +94,7 @@ def route(
     service_header_generator: str = 'auth.generate_request_header',
     response_model: Optional[str] = None,
     response_list: bool = False,
-    form_data: bool = False
+    form_data: bool = False,
 ):
     if response_model:
         try:
@@ -142,84 +113,106 @@ def route(
         response_model=response_model_class,
         status_code=status_code
     )
-
+    client=AllClient()
     def wrapper(func):
-        @real_link
         @functools.wraps(func)
-        async def inner(request: Request, response: Response, **kwargs):
-            service_headers = {}
-
-            if authentication_required:
-                await handle_authentication(
-                    request,
-                    authentication_token_decoder,
-                    service_authorization_checker,
-                    service_header_generator,
-                    service_headers
+        async def inner(request: Union[Request,WebSocket], response: Response, **kwargs):
+            if isinstance(request,WebSocket):
+                ws_url=f"ws://{service_url.strip('/')}/{path.strip('/')}"
+                await client.socket_request(
+                    client_ws=request,
+                    service_url=ws_url,
+                    client_id=none
                 )
+                pass
+            else:
+                service_headers = {}
 
-            try:
-                method = request.method.lower()
-                url = f'{service_url}{request.url.path}'
-                payload = await process_payload(payload_key, kwargs, form_data)
+                try:
+                    method = request.method.lower()
+                    url = f'{service_url}{request.url.path}'
+                    payload = await process_payload(payload_key, kwargs, form_data)
+                    
                 
-                # Extract query parameters from the request
-                query_params = dict(request.query_params)
-                print("query_params",query_params)
-           
-                resp_data, status_code_from_service = await HTTPClient.make_request(
-                    url=url,
-                    method=method,
-                    data=payload,
-                    headers=service_headers,
-                    params=query_params
-                )
-                response.status_code = status_code_from_service
-                return resp_data
+                    query_params = dict(request.query_params)
+                    print("query_params",query_params)
+            
+                    resp_data, status_code_from_service = await client.http_request(
+                        url=url,
+                        method=method,
+                        data=payload,
+                        headers=service_headers,
+                        params=query_params
+                    )
+                    response.status_code = status_code_from_service
+                    return resp_data
 
-            except APIError:
-                raise
-            except Exception:
-                raise APIError(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Internal server error"
-                )
+                except APIError:
+                    raise
+                except Exception:
+                    raise APIError(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail="Internal server error"
+                    )
 
         return inner
     return wrapper
 
-async def handle_authentication(
-    request: Request,
-    token_decoder_path: str,
-    auth_checker_path: str,
-    header_generator_path: str,
-    service_headers: Dict[str, str]
-) -> None:
-
-    authorization = request.headers.get('authorization')
-    if not authorization:
-        raise AuthenticationError("Authorization header missing")
-
-    try:
-        token_decoder = ModuleImporter.import_function(token_decoder_path)
-        token_payload = token_decoder(authorization)
-
-        if auth_checker_path:
-            authorization_check = ModuleImporter.import_function(auth_checker_path)
-            if not authorization_check(token_payload):
-                raise AuthenticationError(
-                    
-                    status_code=status.HTTP_403_FORBIDDEN
-                )
-
-        if header_generator_path:
-            header_generator = ModuleImporter.import_function(header_generator_path)
-            service_headers.update(header_generator(token_payload))
-
-    except APIError:
-        raise
-    except Exception as e:
-        raise AuthenticationError(str(e))
+class HTTPClient:
+    @staticmethod
+    async def make_request(
+        url: str,
+        method: str,
+        data: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, str]] = None,
+        params: Optional[Dict[str, Any]] = None,
+        timeout: float = 30.0
+    ) -> tuple[Any, int]:
+        
+        headers = headers or {}
+        params = params or {}
+        
+        try:
+            client = httpx.AsyncClient()
+            response = await client.request(
+                method=method.upper(),
+                url=url,
+                json=data,
+                headers=headers,
+                params=params,
+                timeout=timeout
+            )
+            try:
+                response.raise_for_status()
+                return response.json(), response.status_code
+            finally:
+                await client.aclose()
+                
+        except httpx.HTTPStatusError as e:
+            await client.aclose()
+            error_detail = (
+                e.response.json().get('detail', str(e))
+                if e.response.headers.get('content-type') == 'application/json'
+                else str(e)
+            )
+            raise APIError(
+                status_code=e.response.status_code,
+                detail=error_detail,
+                headers={'WWW-Authenticate': 'Bearer'}
+            )
+        except httpx.RequestError:
+            await client.aclose()
+            raise APIError(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail='Service is unavailable.',
+                headers={'WWW-Authenticate': 'Bearer'}
+            )
+        except Exception:
+            await client.aclose()
+            raise APIError(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail='Internal server error'
+            )
 
 async def process_payload(payload_key: str, kwargs: Dict[str, Any], form_data: bool = False) -> Optional[Any]:
     try:
@@ -245,24 +238,24 @@ async def process_payload(payload_key: str, kwargs: Dict[str, Any], form_data: b
         )
         
     except Exception as e:
-        # If there's an error in processing, return empty dict for form data
         if form_data:
             return {}
         raise APIError(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Error processing payload: {str(e)}"
         )
+    
 async def process_form_data(data: Dict) -> Dict:
     if not data:
         return {}
         
     processed_data = {}
     for key, value in data.items():
-        # Handle list inputs
+       
         if isinstance(value, list):
             processed_data[key] = []
             
-            # Empty list case
+          
             if not value:
                 continue
                 
@@ -270,9 +263,7 @@ async def process_form_data(data: Dict) -> Dict:
             if any(isinstance(f, (UploadFile, StarletteUploadFile)) for f in value):
                 for file in value:
                     if not isinstance(file, (UploadFile, StarletteUploadFile)):
-                       
                         continue
-                        
                     try:
                         file_content = await file.read()
                         await file.seek(0)
@@ -284,10 +275,8 @@ async def process_form_data(data: Dict) -> Dict:
                     except Exception as e:
                         continue
             else:
-                
                 processed_data[key] = value
                 
-       
         elif isinstance(value, (UploadFile, StarletteUploadFile)):
             try:
                 file_content = await value.read()
@@ -299,20 +288,16 @@ async def process_form_data(data: Dict) -> Dict:
                 }
             except Exception as e:
                 processed_data[key] = None
-                
-        # Handle string or other non-file inputs
+
         elif isinstance(value, str):
             processed_data[key] = value
             
-        # Handle empty value
         elif value is None:
             processed_data[key] = None
             
-        # Handle Pydantic models
         elif isinstance(value, BaseModel):
             processed_data[key] = value.model_dump()
             
-        # Handle all other cases
         else:
             processed_data[key] = value
             

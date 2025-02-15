@@ -13,3 +13,4 @@ passlib[bcrypt]
 pydantic[email]
 uvicorn[standard]
 websockets
+httpx-ws

@@ -5,7 +5,7 @@ app=FastAPI()
 
 
 
-fake_items_db = [{"item_name": "Foo"}, {"item_name": "Bar"}, {"item_name": "Baz"}]
+fake_items_db = [{"aman": "doc_1"}, {"singh": "doc_2"}, {"raj": "doc_3"}]
 
 #query
 
@@ -24,12 +24,14 @@ async def page(skip:int=0,limit:int=10):
 @app.get("/test",status_code=status.HTTP_200_OK)
 async def test_query(name:str):
     try:
-        for i in fake_items_db:
-            if i.keys==name:
-                return JSONResponse(
-                    {"result":f"{i.values}"},
-                    status_code=status.HTTP_202_ACCEPTED,
-                )
+        print("name",name)
+        for item in fake_items_db:
+            for key,value in item.items():
+                if key==name:
+                    return JSONResponse(
+                        {"result":f"{value}"},
+                        status_code=status.HTTP_202_ACCEPTED,
+                    )
         pass
         return JSONResponse(
             {"result":"not found"},
@@ -40,6 +42,27 @@ async def test_query(name:str):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND
         )
+
+@app.get("/test_bool",status_code=status.HTTP_200_OK)
+async def test_query(name:str,values:str):
+    try:
+        for item in fake_items_db:
+            for key,value in item.items():
+                if key==name and value==values:
+                    return JSONResponse(
+                        {"result":True},
+                        status_code=status.HTTP_202_ACCEPTED
+                    )
+        return JSONResponse(
+            {"result":"not found"},
+            status_code=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        print(str(e))
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND
+        )
+
 
 
 @app.post("/login", status_code=200)

@@ -11,4 +11,6 @@ python-multipart
 pyjwt
 passlib[bcrypt]
 pydantic[email]
-aiohttp
+uvicorn[standard]
+websockets
+httpx-ws

@@ -13,7 +13,7 @@ app = FastAPI()
     path='/test',
     status_code=status.HTTP_200_OK,
     service_url=settings.AUTH_SERVICE_URL,
-    payload_key="name",
+    payload_key="",
     authentication_required=False,
     response_model=None,
 )
@@ -31,6 +31,20 @@ async def test(request:Request,response:Response,name:str):
 )
 async def page(request:Request,response:Response):
     pass
+
+
+@route(
+    request_method=app.get,
+    path='/test_bool',
+    status_code=status.HTTP_200_OK,
+    service_url=settings.AUTH_SERVICE_URL,
+    payload_key=None,
+    authentication_required=False,
+    response_model=None,
+)
+async def test_query(request:Request,response:Response,name:str,values:str):
+    pass
+
 
 @route(
     request_method=app.post,
