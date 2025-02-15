@@ -1,12 +1,11 @@
 import httpx
-from fastapi import Request, Response, status,WebSocket ,UploadFile
+from fastapi import Request, Response, status, WebSocket, UploadFile
 from typing import List, Optional, Dict, Any, Union, Callable
 from importlib import import_module
 import base64
 from pydantic import BaseModel
 import functools
 from starlette.datastructures import UploadFile as StarletteUploadFile
-from httpx_ws import WebSocketUpgradeError,AsyncWebSocketSession
 
 class APIError(Exception):
     def __init__(self, status_code: int, detail: str, headers: Optional[Dict[str, str]] = None):
@@ -27,15 +26,9 @@ class AuthenticationError(APIError):
             headers={"WWW-Authenticate": "Bearer"}
         )
 
-
-class AllClient:
-    def __init__(self):
-        self.active_conn:Dict[str,tuple[WebSocket,AsyncWebSocketSession]]
-
-    async def socket_request():
-        pass
-
+class Client:
     async def http_request(
+        self,
         url: str,
         method: str,
         data: Optional[Dict[str, Any]] = None,
@@ -45,29 +38,29 @@ class AllClient:
     ) -> tuple[Any, int]:
         headers = headers or {}
         params = params or {}
+        
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.request(
-                method=method.upper(),
-                url=url,
-                json=data,
-                headers=headers,
-                params=params,
-                timeout=timeout
+                    method=method.upper(),
+                    url=url,
+                    json=data,
+                    headers=headers,
+                    params=params,
+                    timeout=timeout
                 )
                 response.raise_for_status()
                 return response.json(), response.status_code
             except httpx.HTTPStatusError as e:
                 raise APIError(
-                    status_code=e.response.status_code
+                    status_code=e.response.status_code,
+                    detail=str(e)
                 )
             except Exception as e:
                 raise APIError(
-                    status_code=e.response.status_code
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=str(e)
                 )
-            finally:
-                await client.aclose()
-
 
 class ModuleImporter:
     @staticmethod
@@ -89,22 +82,14 @@ def route(
     payload_key: str,
     service_url: str,
     authentication_required: bool = False,
-    authentication_token_decoder: str = 'auth.decode_access_token',
-    service_authorization_checker: str = 'auth.is_admin_user',
-    service_header_generator: str = 'auth.generate_request_header',
     response_model: Optional[str] = None,
-    response_list: bool = False,
     form_data: bool = False,
 ):
     if response_model:
         try:
             response_model_class = ModuleImporter.import_function(response_model)
-            if response_list:
-                response_model_class = List[response_model_class]
         except Exception:
-            raise RequestError(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            raise RequestError(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
     else:
         response_model_class = None
 
@@ -113,106 +98,42 @@ def route(
         response_model=response_model_class,
         status_code=status_code
     )
-    client=AllClient()
+    
+    client = Client()
+
     def wrapper(func):
+        @real_link
         @functools.wraps(func)
-        async def inner(request: Union[Request,WebSocket], response: Response, **kwargs):
-            if isinstance(request,WebSocket):
-                ws_url=f"ws://{service_url.strip('/')}/{path.strip('/')}"
-                await client.socket_request(
-                    client_ws=request,
-                    service_url=ws_url,
-                    client_id=none
-                )
-                pass
-            else:
-                service_headers = {}
-
-                try:
-                    method = request.method.lower()
-                    url = f'{service_url}{request.url.path}'
-                    payload = await process_payload(payload_key, kwargs, form_data)
-                    
-                
-                    query_params = dict(request.query_params)
-                    print("query_params",query_params)
+        async def inner(request: Union[Request, WebSocket], response: Response, **kwargs):
+            if isinstance(request, WebSocket):
+                return await func(request, **kwargs)
             
-                    resp_data, status_code_from_service = await client.http_request(
-                        url=url,
-                        method=method,
-                        data=payload,
-                        headers=service_headers,
-                        params=query_params
-                    )
-                    response.status_code = status_code_from_service
-                    return resp_data
+            try:
+                method = request.method.lower()
+                url = f'{service_url}{request.url.path}'
+                payload = await process_payload(payload_key, kwargs, form_data)
+                query_params = dict(request.query_params)
+                
+                resp_data, status_code_from_service = await client.http_request(
+                    url=url,
+                    method=method,
+                    data=payload,
+                    headers={},
+                    params=query_params
+                )
+                response.status_code = status_code_from_service
+                return resp_data
 
-                except APIError:
-                    raise
-                except Exception:
-                    raise APIError(
-                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                        detail="Internal server error"
-                    )
+            except APIError:
+                raise
+            except Exception:
+                raise APIError(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Internal server error"
+                )
 
         return inner
     return wrapper
-
-class HTTPClient:
-    @staticmethod
-    async def make_request(
-        url: str,
-        method: str,
-        data: Optional[Dict[str, Any]] = None,
-        headers: Optional[Dict[str, str]] = None,
-        params: Optional[Dict[str, Any]] = None,
-        timeout: float = 30.0
-    ) -> tuple[Any, int]:
-        
-        headers = headers or {}
-        params = params or {}
-        
-        try:
-            client = httpx.AsyncClient()
-            response = await client.request(
-                method=method.upper(),
-                url=url,
-                json=data,
-                headers=headers,
-                params=params,
-                timeout=timeout
-            )
-            try:
-                response.raise_for_status()
-                return response.json(), response.status_code
-            finally:
-                await client.aclose()
-                
-        except httpx.HTTPStatusError as e:
-            await client.aclose()
-            error_detail = (
-                e.response.json().get('detail', str(e))
-                if e.response.headers.get('content-type') == 'application/json'
-                else str(e)
-            )
-            raise APIError(
-                status_code=e.response.status_code,
-                detail=error_detail,
-                headers={'WWW-Authenticate': 'Bearer'}
-            )
-        except httpx.RequestError:
-            await client.aclose()
-            raise APIError(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail='Service is unavailable.',
-                headers={'WWW-Authenticate': 'Bearer'}
-            )
-        except Exception:
-            await client.aclose()
-            raise APIError(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail='Internal server error'
-            )
 
 async def process_payload(payload_key: str, kwargs: Dict[str, Any], form_data: bool = False) -> Optional[Any]:
     try:
@@ -244,22 +165,19 @@ async def process_payload(payload_key: str, kwargs: Dict[str, Any], form_data: b
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Error processing payload: {str(e)}"
         )
-    
+
 async def process_form_data(data: Dict) -> Dict:
     if not data:
         return {}
         
     processed_data = {}
     for key, value in data.items():
-       
         if isinstance(value, list):
             processed_data[key] = []
             
-          
             if not value:
                 continue
                 
-           
             if any(isinstance(f, (UploadFile, StarletteUploadFile)) for f in value):
                 for file in value:
                     if not isinstance(file, (UploadFile, StarletteUploadFile)):
@@ -272,7 +190,7 @@ async def process_form_data(data: Dict) -> Dict:
                             'content': base64.b64encode(file_content).decode('utf-8'),
                             'content_type': file.content_type or 'application/octet-stream'
                         })
-                    except Exception as e:
+                    except Exception:
                         continue
             else:
                 processed_data[key] = value
@@ -286,9 +204,9 @@ async def process_form_data(data: Dict) -> Dict:
                     'content': base64.b64encode(file_content).decode('utf-8'),
                     'content_type': value.content_type or 'application/octet-stream'
                 }
-            except Exception as e:
+            except Exception:
                 processed_data[key] = None
-
+                
         elif isinstance(value, str):
             processed_data[key] = value
             
