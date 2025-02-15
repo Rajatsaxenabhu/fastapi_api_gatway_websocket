@@ -7,6 +7,31 @@ from schema.auth import UpdateSchema,LoginSchema,DeleteSchema,RegisterSchema
 from  typing import Annotated
 
 app = FastAPI()
+
+@route(
+    request_method=app.get,
+    path='/test',
+    status_code=status.HTTP_200_OK,
+    service_url=settings.AUTH_SERVICE_URL,
+    payload_key="name",
+    authentication_required=False,
+    response_model=None,
+)
+async def test(request:Request,response:Response,name:str):
+    pass
+
+@route(
+    request_method=app.get,
+    path='/simple_query',
+    status_code=status.HTTP_200_OK,
+    service_url=settings.AUTH_SERVICE_URL,
+    payload_key=None,
+    authentication_required=False,
+    response_model=None,
+)
+async def page(request:Request,response:Response):
+    pass
+
 @route(
     request_method=app.post,
     path='/login',

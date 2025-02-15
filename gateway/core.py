@@ -42,10 +42,24 @@ class HTTPClient:
         method: str,
         data: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, str]] = None,
+        params: Optional[Dict[str, Any]] = None,
         timeout: float = 30.0
     ) -> tuple[Any, int]:
-        """Make HTTP request with error handling"""
+        """Make HTTP request with error handling
+        
+        Args:
+            url: Target URL
+            method: HTTP method
+            data: Request body data
+            headers: Request headers
+            params: Query string parameters
+            timeout: Request timeout in seconds
+        
+        Returns:
+            Tuple of (response data, status code)
+        """
         headers = headers or {}
+        params = params or {}
         
         try:
             async with HTTPClient.get_client() as client:
@@ -54,6 +68,7 @@ class HTTPClient:
                     url=url,
                     json=data,
                     headers=headers,
+                    params=params,
                     timeout=timeout
                 )
                 response.raise_for_status()
@@ -82,6 +97,7 @@ class HTTPClient:
                 detail='Internal server error'
             )
 
+
 class ModuleImporter:
     @staticmethod
     def import_function(method_path: str) -> Callable:
@@ -109,8 +125,6 @@ def route(
     response_list: bool = False,
     form_data: bool = False
 ):
-
-    
     if response_model:
         try:
             response_model_class = ModuleImporter.import_function(response_model)
@@ -148,12 +162,17 @@ def route(
                 method = request.method.lower()
                 url = f'{service_url}{request.url.path}'
                 payload = await process_payload(payload_key, kwargs, form_data)
+                
+                # Extract query parameters from the request
+                query_params = dict(request.query_params)
+                print("query_params",query_params)
            
                 resp_data, status_code_from_service = await HTTPClient.make_request(
                     url=url,
                     method=method,
                     data=payload,
                     headers=service_headers,
+                    params=query_params
                 )
                 response.status_code = status_code_from_service
                 return resp_data
@@ -234,15 +253,6 @@ async def process_payload(payload_key: str, kwargs: Dict[str, Any], form_data: b
             detail=f"Error processing payload: {str(e)}"
         )
 async def process_form_data(data: Dict) -> Dict:
-    """
-    Process form data including files, handling empty cases and string inputs.
-    
-    Args:
-        data (Dict): The input form data dictionary
-        
-    Returns:
-        Dict: Processed form data with encoded files and handled empty cases
-    """
     if not data:
         return {}
         
@@ -256,11 +266,11 @@ async def process_form_data(data: Dict) -> Dict:
             if not value:
                 continue
                 
-            # Check if list contains files
+           
             if any(isinstance(f, (UploadFile, StarletteUploadFile)) for f in value):
                 for file in value:
                     if not isinstance(file, (UploadFile, StarletteUploadFile)):
-                        # Skip non-file items in the list
+                       
                         continue
                         
                     try:
@@ -274,10 +284,10 @@ async def process_form_data(data: Dict) -> Dict:
                     except Exception as e:
                         continue
             else:
-                # If no files in list, keep original values
+                
                 processed_data[key] = value
                 
-        # Handle single file case
+       
         elif isinstance(value, (UploadFile, StarletteUploadFile)):
             try:
                 file_content = await value.read()

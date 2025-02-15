@@ -1,7 +1,45 @@
-from fastapi import FastAPI,HTTPException,Depends
+from fastapi import FastAPI,HTTPException,Depends,status
 from fastapi.responses import JSONResponse
 from schema.auth import LoginSchema,DeleteSchema,RegisterSchema,UpdateSchema
 app=FastAPI()
+
+
+
+fake_items_db = [{"item_name": "Foo"}, {"item_name": "Bar"}, {"item_name": "Baz"}]
+
+#query
+
+
+@app.get("/simple_query",status_code=status.HTTP_200_OK)
+async def page(skip:int=0,limit:int=10):
+    try:
+        return fake_items_db[skip:skip+limit]
+    except Exception as e:
+        print(e)
+        raise HTTPException(
+            status_code=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+    
+    
+@app.get("/test",status_code=status.HTTP_200_OK)
+async def test_query(name:str):
+    try:
+        for i in fake_items_db:
+            if i.keys==name:
+                return JSONResponse(
+                    {"result":f"{i.values}"},
+                    status_code=status.HTTP_202_ACCEPTED,
+                )
+        pass
+        return JSONResponse(
+            {"result":"not found"},
+            status_code=status.HTTP_204_NO_CONTENT
+        )
+    except Exception as e:
+        print(str(e))
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND
+        )
 
 
 @app.post("/login", status_code=200)
