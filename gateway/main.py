@@ -15,7 +15,6 @@ app = FastAPI()
     service_url=settings.AUTH_SERVICE_URL,
     payload_key="",
     authentication_required=False,
-    response_model=None,
 )
 async def test(request:Request,response:Response,name:str):
     pass
@@ -27,7 +26,6 @@ async def test(request:Request,response:Response,name:str):
     service_url=settings.AUTH_SERVICE_URL,
     payload_key=None,
     authentication_required=False,
-    response_model=None,
 )
 async def page(request:Request,response:Response):
     pass
@@ -40,7 +38,6 @@ async def page(request:Request,response:Response):
     service_url=settings.AUTH_SERVICE_URL,
     payload_key=None,
     authentication_required=False,
-    response_model=None,
 )
 async def test_query(request:Request,response:Response,name:str,values:str):
     pass
@@ -53,7 +50,6 @@ async def test_query(request:Request,response:Response,name:str,values:str):
     service_url=settings.AUTH_SERVICE_URL,
     payload_key="login_data",
     authentication_required=False,
-    response_model=''
 )
 async def login(login_data:LoginSchema,request: Request, response: Response):
     pass
@@ -65,7 +61,6 @@ async def login(login_data:LoginSchema,request: Request, response: Response):
     service_url=settings.AUTH_SERVICE_URL,
     payload_key="resgister_data",
     authentication_required=False,
-    response_model=''
 )
 async def register(resgister_data:RegisterSchema,request: Request, response: Response):
     pass
@@ -77,10 +72,8 @@ async def register(resgister_data:RegisterSchema,request: Request, response: Res
     service_url=settings.AUTH_SERVICE_URL,
     payload_key="delete_id",
     authentication_required=False,
-    response_model=''
 )
 async def delete(delete_id: DeleteSchema,request: Request, response: Response):
-    # erro r when the int value start with zero
     pass
 
 @route(
@@ -90,7 +83,6 @@ async def delete(delete_id: DeleteSchema,request: Request, response: Response):
     service_url=settings.AUTH_SERVICE_URL,
     payload_key="update_data",
     authentication_required=False,
-    response_model=''
 )
 async def update(update_data:UpdateSchema,request: Request, response: Response):
     pass
@@ -103,7 +95,6 @@ async def update(update_data:UpdateSchema,request: Request, response: Response):
     service_url=settings.MLDATASET_SERVICE_URL,
     payload_key="form_data",
     authentication_required=False,
-    response_model='',
     form_data=True
 )
 async def image_upload_multiple(request:Request,response:Response,

@@ -82,20 +82,11 @@ def route(
     payload_key: str,
     service_url: str,
     authentication_required: bool = False,
-    response_model: Optional[str] = None,
     form_data: bool = False,
 ):
-    if response_model:
-        try:
-            response_model_class = ModuleImporter.import_function(response_model)
-        except Exception:
-            raise RequestError(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    else:
-        response_model_class = None
 
     real_link = request_method(
         path,
-        response_model=response_model_class,
         status_code=status_code
     )
     
