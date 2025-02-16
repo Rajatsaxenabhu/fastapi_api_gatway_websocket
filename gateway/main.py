@@ -1,12 +1,18 @@
-from fastapi import FastAPI, status, Request, Response,UploadFile,File,Form
-from typing import Tuple,List
+from fastapi import FastAPI, status, Request, Response,UploadFile,File,Form,WebSocket
+from typing import Tuple,List,Optional,Union
 from schema.mldataset import Formdata
 from conf.conf import settings
 from core import route
 from schema.auth import UpdateSchema,LoginSchema,DeleteSchema,RegisterSchema
 from  typing import Annotated
-
+from fastapi.middleware.cors import CORSMiddleware
 app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],)
 
 @route(
     request_method=app.get,
@@ -101,4 +107,12 @@ async def image_upload_multiple(request:Request,response:Response,
                                 file_name: Annotated[str, Form()],
                                 files: Annotated[List[UploadFile], File()] = []
                                 ):
+    pass
+
+clients:List[WebSocket]=[]
+@route(
+    request_method=app.websocket,
+    path="/ws",
+    service_url=settings.MLDATASET_SERVICE_URL)
+async def websocket_test(request:Union[Request, WebSocket],response:Response=None):
     pass

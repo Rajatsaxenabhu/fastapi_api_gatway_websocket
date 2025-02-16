@@ -78,25 +78,39 @@ class ModuleImporter:
 def route(
     request_method: Any,
     path: str,
-    status_code: int,
-    payload_key: str,
     service_url: str,
     authentication_required: bool = False,
     form_data: bool = False,
+    status_code: Optional[int] = None,
+    payload_key: Optional[str] = None,
 ):
+
+    if getattr(request_method, '__name__', '').lower() == 'websocket':
+        def websocket_wrapper(func):
+            @request_method(path)
+            async def inner(websocket: WebSocket):
+                await websocket.accept()
+                try:
+                    await func(websocket)
+                except Exception as e:
+                    print(f"WebSocket error: {str(e)}")
+                    if websocket.client_state.CONNECTED:
+                        await websocket.close(code=1000)
+            return inner
+        return websocket_wrapper
 
     real_link = request_method(
         path,
         status_code=status_code
     )
-    
     client = Client()
 
     def wrapper(func):
         @real_link
         @functools.wraps(func)
-        async def inner(request: Union[Request, WebSocket], response: Response, **kwargs):
+        async def inner(request: Union[Request, WebSocket], response: Response=None, **kwargs):
             if isinstance(request, WebSocket):
+                print("request is websocket request")
                 return await func(request, **kwargs)
             
             try:
