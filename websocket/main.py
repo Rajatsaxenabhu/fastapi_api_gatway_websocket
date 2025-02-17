@@ -6,7 +6,7 @@ app=FastAPI()
 
 clients:List[WebSocket]=[]
 
-@app.websocket("/ws")
+@app.websocket("/")
 async def websocket_test(websocket:WebSocket):
     await websocket.accept()
     clients.append(websocket)

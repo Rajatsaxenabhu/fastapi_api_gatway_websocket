@@ -8,6 +8,7 @@ import functools
 from starlette.datastructures import UploadFile as StarletteUploadFile
 from urllib.parse import urlparse, urlunparse
 from httpx_ws import aconnect_ws
+
 class APIError(Exception):
     def __init__(self, status_code: int, detail: str, headers: Optional[Dict[str, str]] = None):
         self.status_code = status_code
