@@ -109,10 +109,10 @@ async def image_upload_multiple(request:Request,response:Response,
                                 ):
     pass
 
-clients:List[WebSocket]=[]
+
 @route(
     request_method=app.websocket,
     path="/ws",
-    service_url=settings.MLDATASET_SERVICE_URL)
+    service_url=settings.WEBSOCKET_SERVICE_URL)
 async def websocket_test(request:Union[Request, WebSocket],response:Response=None):
     pass

@@ -1,12 +1,13 @@
 import httpx
-from fastapi import Request, Response, status, WebSocket, UploadFile
+from fastapi import Request, Response, status, WebSocket, UploadFile,WebSocketDisconnect
 from typing import List, Optional, Dict, Any, Union, Callable
 from importlib import import_module
 import base64
 from pydantic import BaseModel
 import functools
 from starlette.datastructures import UploadFile as StarletteUploadFile
-
+from urllib.parse import urlparse, urlunparse
+from httpx_ws import aconnect_ws
 class APIError(Exception):
     def __init__(self, status_code: int, detail: str, headers: Optional[Dict[str, str]] = None):
         self.status_code = status_code
@@ -25,6 +26,66 @@ class AuthenticationError(APIError):
             detail=detail,
             headers={"WWW-Authenticate": "Bearer"}
         )
+
+
+class SimpleWebSocketProxy:
+    def __init__(self, target_url: str):
+        parsed = urlparse(target_url)
+        # Using the target URL properly
+        self.ws_url = f"ws://{parsed.netloc}{parsed.path}"
+        print(f"Target WebSocket URL: {self.ws_url}")
+
+    async def proxy(self, client_ws: WebSocket):
+        print("Starting websocket proxy")
+        await client_ws.accept()
+        print("Client connection accepted")
+
+        async with httpx.AsyncClient() as client:
+            try:
+                # Connect to target service using httpx_ws
+                print(f"Connecting to target: {self.ws_url}")
+                async with aconnect_ws(self.ws_url, client) as ws:
+                    print("Connected to target service")
+                    
+                    while True:
+                        try:
+                            # Get message from client
+                            data = await client_ws.receive()
+                            msg_type = data.get("type")
+                            print(f"Received message type: {msg_type}")
+                            
+                            # Forward to service
+                            if "text" in data:
+                                message = data["text"]
+                                print(f"Forwarding text: {message}")
+                                await ws.send_text(message)
+                                
+                                # Get and forward response
+                                response = await ws.receive_text()
+                                await client_ws.send_text(response)
+                                
+                            elif "bytes" in data:
+                                message = data["bytes"]
+                                print(f"Forwarding binary data")
+                                await ws.send_bytes(message)
+                                
+                                # Get and forward response
+                                response = await ws.receive_bytes()
+                                await client_ws.send_bytes(response)
+                                
+                        except WebSocketDisconnect:
+                            print("Client disconnected")
+                            break
+                        except Exception as e:
+                            print(f"Error in message handling: {str(e)}")
+                            break
+                            
+            except Exception as e:
+                print(f"Connection error: {str(e)}")
+                try:
+                    await client_ws.close(code=1011)
+                except:
+                    pass
 
 class Client:
     async def http_request(
@@ -89,15 +150,19 @@ def route(
         def websocket_wrapper(func):
             @request_method(path)
             async def inner(websocket: WebSocket):
-                await websocket.accept()
+                print("New websocket connection request")
                 try:
-                    await func(websocket)
+                    proxy = SimpleWebSocketProxy(service_url)
+                    await proxy.proxy(websocket)
                 except Exception as e:
                     print(f"WebSocket error: {str(e)}")
-                    if websocket.client_state.CONNECTED:
-                        await websocket.close(code=1000)
+                    try:
+                        await websocket.close(code=1011)
+                    except:
+                        pass
             return inner
         return websocket_wrapper
+
 
     real_link = request_method(
         path,
@@ -108,11 +173,7 @@ def route(
     def wrapper(func):
         @real_link
         @functools.wraps(func)
-        async def inner(request: Union[Request, WebSocket], response: Response=None, **kwargs):
-            if isinstance(request, WebSocket):
-                print("request is websocket request")
-                return await func(request, **kwargs)
-            
+        async def inner(request: Request, response: Response=None, **kwargs):           
             try:
                 method = request.method.lower()
                 url = f'{service_url}{request.url.path}'
