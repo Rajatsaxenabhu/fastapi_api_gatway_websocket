@@ -2,7 +2,7 @@ from fastapi import FastAPI, status, Request, Response,UploadFile,File,Form,WebS
 from typing import Tuple,List,Optional,Union
 from schema.mldataset import Formdata
 from conf.conf import settings
-from core_1 import route
+from core_1 import route_rest
 from schema.auth import UpdateSchema,LoginSchema,DeleteSchema
 from  typing import Annotated
 app = FastAPI()
@@ -15,7 +15,7 @@ app = FastAPI()
 #patch
 #multipart form
 
-@route(
+@route_rest(
     request_method=app.get,
     path='/',
     status_code=status.HTTP_200_OK,
@@ -26,7 +26,7 @@ app = FastAPI()
 async def test(request:Request,response:Response):
     pass
 
-@route(
+@route_rest(
     request_method=app.get,
     path='/test',
     status_code=status.HTTP_200_OK,
@@ -38,7 +38,7 @@ async def page(request:Request,response:Response,name:str):
     pass
 
 
-@route(
+@route_rest(
     request_method=app.get,
     path='/test_bool',
     status_code=status.HTTP_200_OK,
@@ -50,7 +50,7 @@ async def test_query(request:Request,response:Response,name:str,values:str):
     pass
 
 
-@route(
+@route_rest(
     request_method=app.post,
     path='/login',
     status_code=status.HTTP_201_CREATED,
@@ -61,7 +61,7 @@ async def test_query(request:Request,response:Response,name:str,values:str):
 async def login(login_data:LoginSchema,request: Request, response: Response):
     pass
 
-@route(
+@route_rest(
     request_method=app.delete,
     path='/delete',
     status_code=status.HTTP_201_CREATED,
@@ -72,7 +72,7 @@ async def login(login_data:LoginSchema,request: Request, response: Response):
 async def delete(delete_id: DeleteSchema,request: Request, response: Response):
     pass
 
-@route(
+@route_rest(
     request_method=app.put,
     path='/update',
     status_code=status.HTTP_201_CREATED,
@@ -84,23 +84,23 @@ async def update(update_data:UpdateSchema,request: Request, response: Response):
     pass
 
 
-# @route(
-#     request_method=app.post,
-#     path="/form_files",
-#     status_code=status.HTTP_201_CREATED,
-#     service_url=settings.MLDATASET_SERVICE_URL,
-#     payload_key="form_data",
-#     authentication_required=False,
-#     form_data=True
-# )
-# async def image_upload_multiple(request:Request,response:Response,
-#                                 file_name: Annotated[str, Form()],
-#                                 files: Annotated[List[UploadFile], File()] = []
-#                                 ):
-#     pass
+@route_rest(
+    request_method=app.post,
+    path="/form_files",
+    status_code=status.HTTP_201_CREATED,
+    service_url=settings.MLDATASET_SERVICE_URL,
+    payload_key="form_data",
+    authentication_required=False,
+    form_data=True
+)
+async def image_upload_multiple(request:Request,response:Response,
+                                file_name: Annotated[str, Form()],
+                                files: Annotated[List[UploadFile], File()] = []
+                                ):
+    pass
 
 
-# @route(
+# @route_rest(
 #     request_method=app.websocket,
 #     path="/ws",
 #     service_url=settings.WEBSOCKET_SERVICE_URL)
