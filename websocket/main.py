@@ -1,7 +1,24 @@
-from fastapi import FastAPI, WebSocket, status, HTTPException, WebSocketDisconnect, WebSocketException
-from fastapi.responses import JSONResponse
-from typing import List, Dict, Set
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, WebSocketException
+from typing import Set
 import json
+
+
+# Sending data
+# await websocket.send_text(data)
+# await websocket.send_bytes(data)
+# await websocket.send_json(data)
+# JSON messages default to being sent over text data frames, from version 0.10.0 onwards. Use websocket.send_json(data, mode="binary") to send JSON over binary data frames.
+
+# Receiving data
+# await websocket.receive_text()
+# await websocket.receive_bytes()
+# await websocket.receive_json()
+# May raise starlette.websockets.WebSocketDisconnect().
+
+# JSON messages default to being received over text data frames, from version 0.10.0 onwards. Use websocket.receive_json(data, mode="binary") to receive JSON over binary data frames.
+
+
+
 
 app = FastAPI()
 
@@ -16,68 +33,70 @@ class ConnectionManager:
     def disconnect(self, websocket: WebSocket):
         self.active_connections.remove(websocket)
         
-    async def broadcast(self, message: str):
-        for connection in self.active_connections:
-            await connection.send_text(message)
 
 class MessageHandler:
     @staticmethod
-    async def handle_text(websocket: WebSocket, message: str):
+    async def handle_message(websocket: WebSocket, message_type: str, data: any):
         try:
-            processed_message = message.upper()
-            await websocket.send_text(processed_message)
-        except Exception as e:
-            raise WebSocketException(code=1003, reason=str(e))
-
-    @staticmethod
-    async def handle_json(websocket: WebSocket, message: Dict):
-        try:
-            response = {
-                "type": "json",
-                "data": message
-            }
-            await websocket.send_json(response)
-        except Exception as e:
-            raise WebSocketException(code=1003, reason=str(e))
-
-    @staticmethod
-    async def handle_binary(websocket: WebSocket, data: bytes):
-        try:
-            await websocket.send_bytes(data)
+            if message_type == "text":
+                processed_message = data.upper()
+                await websocket.send_text(processed_message)
+                
+            elif message_type == "json":
+                json_data = data if isinstance(data, dict) else json.loads(data)
+                response = {
+                    "type": "json",
+                    "data": json_data
+                }
+                await websocket.send_json(response)
+                
+            elif message_type == "binary":
+                await websocket.send_bytes(data)
+                
+            else:
+                raise WebSocketException(code=1003, reason=f"Unsupported message type: {message_type}")
+                
+        except json.JSONDecodeError:
+            raise WebSocketException(code=1003, reason="Invalid JSON format")
         except Exception as e:
             raise WebSocketException(code=1003, reason=str(e))
 
 manager = ConnectionManager()
-handler = MessageHandler()
 
-@app.websocket("/ws")
+@app.websocket("/")
 async def websocket_endpoint(websocket: WebSocket):
     try:
         await manager.connect(websocket)
+        await websocket.send_text("Connected to WebSocket server")
+        
         while True:
             try:
-                data = await websocket.receive()
+                message = await websocket.receive_text() #raw data liya 
+                await websocket.send(message.upper())
+                # message_type = message.get("type")
                 
-                if "text" in data:
-                    await MessageHandler.handle_text(websocket, data["text"])
-                elif "json" in data:
-                    await MessageHandler.handle_json(websocket, data["json"])
-                elif "bytes" in data:
-                    await MessageHandler.handle_binary(websocket, data["bytes"])
-                else:
-                    raise WebSocketException(code=1003, reason="Unsupported message format")
+                # if message_type == "websocket.disconnect":
+                #     raise WebSocketDisconnect(code=1000, reason="Client disconnected")
+                
+                # if message_type == "websocket.receive":
+                #     data = message.get("text") or message.get("bytes") or message.get("data")
                     
+                #     if isinstance(data, str):
+                #         try:
+                #             json_data = json.loads(data)
+                #             await MessageHandler.handle_message(websocket, "json", json_data)
+                #         except json.JSONDecodeError:
+                #             await MessageHandler.handle_message(websocket, "text", data)
+                #     elif isinstance(data, bytes):
+                #         await MessageHandler.handle_message(websocket, "binary", data)
+                
             except WebSocketDisconnect:
                 manager.disconnect(websocket)
-                await manager.broadcast(f"Client disconnected")
                 break
                 
             except Exception as e:
-                manager.disconnect(websocket)
-                await websocket.close(code=1003, reason=str(e))
-                break
+                await websocket.send_text(f"Error: {str(e)}")
+                continue
                 
     except Exception as e:
-        if websocket in manager.active_connections:
-            manager.disconnect(websocket)
         raise WebSocketException(code=1003, reason=str(e))

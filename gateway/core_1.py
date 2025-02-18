@@ -8,7 +8,7 @@ import functools
 from starlette.datastructures import UploadFile as StarletteUploadFile
 from urllib.parse import urlparse, urlunparse
 from httpx_ws import aconnect_ws
-import json
+
 
 class APIError(Exception):
     def __init__(self, status_code: int, detail: str, headers: Optional[Dict[str, str]] = None):
@@ -201,104 +201,107 @@ async def process_form_data(data: Dict) -> Dict:
 
 #s
 
-class SimpleWebSocketProxy:
-    def __init__(self, service_url: str,path:str):
-        self.ws_url = f"ws://{service_url}{path}"
-        print(f"Target WebSocket URL: {self.ws_url}")
 
-    async def handle_message(self, data: Dict[str, Any], ws, client_ws: WebSocket):
-        try:
-            if "text" in data:
-                try:
-                    json_data = json.loads(data["text"])
-                    await ws.send_json(json_data)
-                    response = await ws.receive_text()
-                    await client_ws.send_text(response)
-                except json.JSONDecodeError:
-                    await ws.send_text(data["text"])
-                    response = await ws.receive_text()
-                    await client_ws.send_text(response)
-                    
-            elif "bytes" in data:
-                await ws.send_bytes(data["bytes"])
-                response = await ws.receive_bytes()
-                await client_ws.send_bytes(response)
-                
-            else:
-                error_msg = f"Unsupported message format: {data}"
-                await client_ws.send_json({
-                    "type": "error",
-                    "error": error_msg
-                })
-                
-        except Exception as e:
-            error_msg = f"Error processing message: {str(e)}"
-            await client_ws.send_json({
-                "type": "error",
-                "error": error_msg
-            })
+
+class SimpleWebSocketProxy:
+    def __init__(self, service_url: str):
+        self.ws_url = service_url
+        print(f"Initializing proxy to connect to: {self.ws_url}")
 
     async def proxy(self, client_ws: WebSocket):
-        """Main proxy method to handle WebSocket connections"""
-        print("Starting websocket proxy")
-        await client_ws.accept()
-        print("Client connection accepted")
-
-        async with httpx.AsyncClient() as client:
-            try:
-                async with aconnect_ws(self.ws_url, client) as ws:
-                    print("Connected to target service")
-                    while True:
-                        try:
-                            data = await client_ws.receive()
-                            print(f"Received message: {data}")
-                            await self.handle_message(data, ws, client_ws)
-                            
-                        except WebSocketDisconnect:
-                            print("Client disconnected")
-                            break
-                        except Exception as e:
-                            print(f"Error in message handling: {str(e)}")
+        try:
+            await client_ws.accept()
+            
+            async with httpx.AsyncClient() as client: 
+                try:
+                    async with aconnect_ws(self.ws_url, client) as ws:
+                        while True:
                             try:
+                                # Receive and handle different message types from client
+                                data = await client_ws.receive()
+                                
+                                # Handle different message types
+                                if 'text' in data:
+                                    message=data['text']
+                                    await ws.send_text(message)
+
+                                elif 'bytes' in data:
+                                    message=data['bytes']
+                                    await ws.send_bytes(message)
+                                   
+                                elif 'json' in message:
+                                    message=data['json']
+                                    await ws.send_json(message)
+                        
+                                
+                                # Receive response from service
+                                response = await ws.receive()
+                                
+                                # Forward response back to client
+                                if isinstance(response, str):
+                                    await client_ws.send_text(response)
+                                elif isinstance(response, bytes):
+                                    await client_ws.send_bytes(response)
+                                elif isinstance(response, dict):
+                                    await client_ws.send_json(response)
+                                    
+                            except WebSocketDisconnect:
+                                print("Client disconnected")
+                                break
+                            except Exception as e:
+                                print(f"Message handling error: {str(e)}")
                                 await client_ws.send_json({
                                     "type": "error",
                                     "error": str(e)
                                 })
-                            except:
-                                pass
-                            break
-                            
-            except Exception as e:
-                print(f"Connection error: {str(e)}")
-                try:
-                    await client_ws.close(code=1011)
-                except:
-                    pass  
+                                break
+                except httpx.ConnectError as e:
+                    print(f"Service connection refused: {self.ws_url}")
+                    print(f"Detailed error: {str(e)}")
+                    await client_ws.send_json({
+                        "type": "error",
+                        "error": "Service connection refused",
+                        "details": str(e)
+                    })
+                    
+                except Exception as e:
+                    print(f"Service connection error: {str(e)}")
+                    await client_ws.send_json({
+                        "type": "error",
+                        "error": str(e)
+                    })
+                
+                finally:
+                    try:
+                        await client_ws.close()
+                    except:
+                        pass 
+
+        except Exception as e:
+            print(f"Client connection error: {str(e)}")
+            try:
+                await client_ws.close(code=1011)
+            except:
+                pass
+
 def route_ws(
-    path: str,
-    service_url: str,
-    authentication_required: bool = False,
-):
-    pass
-    async def websocet_wrapper(func):
-        async def inner(websocket:WebSocket):
-            print("New websocket connection request")
-            #tae the header 
-            #try auth
-            try:
-                #auth
-                pass
-            except Exception as e:
-                print("filaoed under auth")
-                pass
-            try:
-                proxy = SimpleWebSocketProxy(service_url,path)
-                await proxy.proxy(websocket)
-            except Exception as e:
-                print(f"WebSocket error: {str(e)}")
+        request_methods:Any,
+        path: str, 
+        service_url: str, 
+        authentication_required: bool = False):
+
+        def websocket_wrapper(func):
+            @request_methods(path)
+            async def inner(websocket: WebSocket):
                 try:
-                    await websocket.close(code=1011)
-                except:
-                    pass
-        return inner
-    return websocet_wrapper
+                    print(f"Attempting to establish proxy to {service_url}")  # Debug log
+                    proxy = SimpleWebSocketProxy(service_url)  # Use provided service_url
+                    await proxy.proxy(websocket)
+                except Exception as e:
+                    print(f"WebSocket error: {str(e)}")
+                    try:
+                        await websocket.close(code=1011)
+                    except:
+                        pass
+            return inner
+        return websocket_wrapper

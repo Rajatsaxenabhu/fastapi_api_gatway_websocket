@@ -1,19 +1,11 @@
 from fastapi import FastAPI, status, Request, Response,UploadFile,File,Form,WebSocket
-from typing import Tuple,List,Optional,Union
+from typing import List
 from schema.mldataset import Formdata
 from conf.conf import settings
-from core_1 import route_rest
+from core_1 import route_rest,route_ws
 from schema.auth import UpdateSchema,LoginSchema,DeleteSchema
 from  typing import Annotated
 app = FastAPI()
-
-#all get
-# get by id
-# get by string parameter or query paramenet
-#post
-#delete
-#patch
-#multipart form
 
 @route_rest(
     request_method=app.get,
@@ -100,9 +92,11 @@ async def image_upload_multiple(request:Request,response:Response,
     pass
 
 
-# @route_rest(
-#     request_method=app.websocket,
-#     path="/ws",
-#     service_url=settings.WEBSOCKET_SERVICE_URL)
-# async def websocket_test(request:Union[Request, WebSocket],response:Response=None):
-#     pass
+@route_ws(
+    request_methods=app.websocket,
+    path="/ws",
+    service_url=settings.WEBSOCKET_SERVICE_URL,
+    authentication_required=False,
+)
+async def websocket_test(websocket:WebSocket):
+    pass
