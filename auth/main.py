@@ -1,127 +1,118 @@
 from fastapi import FastAPI,HTTPException,Depends,status
 from fastapi.responses import JSONResponse
-from schema.auth import LoginSchema,DeleteSchema,RegisterSchema,UpdateSchema
+from schema.auth import LoginSchema,DeleteSchema,Multi_query,UpdateSchema
 app=FastAPI()
 
 
 
 fake_items_db = [{"aman": "doc_1"}, {"singh": "doc_2"}, {"raj": "doc_3"}]
 
-#query
 
 
-@app.get("/simple_query",status_code=status.HTTP_200_OK)
-async def page(skip:int=0,limit:int=10):
+# get all 
+@app.get("/",status_code=status.HTTP_200_OK)
+async def get(skip:int=0,limit:int=10):
     try:
-        return fake_items_db[skip:skip+limit]
-    except Exception as e:
-        print(e)
-        raise HTTPException(
-            status_code=status.HTTP_405_METHOD_NOT_ALLOWED
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content= fake_items_db[skip:skip+limit]
         )
     
+    except Exception as e:
+        print(str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+    )
     
+# get by name or query string
 @app.get("/test",status_code=status.HTTP_200_OK)
-async def test_query(name:str):
+async def get_query(name:str):
     try:
         print("name",name)
         for item in fake_items_db:
             for key,value in item.items():
                 if key==name:
                     return JSONResponse(
-                        {"result":f"{value}"},
-                        status_code=status.HTTP_202_ACCEPTED,
+                        content=f"{key} value is {value}",
+                        status_code=status.HTTP_200_OK,
                     )
-        pass
         return JSONResponse(
-            {"result":"not found"},
-            status_code=status.HTTP_204_NO_CONTENT
+            content="not found",
+            status_code=status.HTTP_200_OK
         )
     except Exception as e:
         print(str(e))
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND
-        )
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+    )
 
-@app.get("/test_bool",status_code=status.HTTP_200_OK)
-async def test_query(name:str,values:str):
+# multi qeury paramenetr
+
+@app.get("/test_bool")
+async def multi_query(name:str,values:str):
     try:
         for item in fake_items_db:
             for key,value in item.items():
                 if key==name and value==values:
                     return JSONResponse(
-                        {"result":True},
-                        status_code=status.HTTP_202_ACCEPTED
+                        content="Found in db",
+                        status_code=status.HTTP_200_OK
                     )
         return JSONResponse(
-            {"result":"not found"},
-            status_code=status.HTTP_404_NOT_FOUND
+            content="Not found in DB",
+            status_code=status.HTTP_200_OK
         )
     except Exception as e:
         print(str(e))
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND
-        )
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+    )
 
 
+# post
 
-@app.post("/login", status_code=200)
+@app.post("/login", status_code=status.HTTP_200_OK)
 async def login(payload: LoginSchema):
     try:
         print("Login attempt with:", payload)
-        return  JSONResponse(
-            {"message": "Login successful",
-             "user _data": {
-                 "username": payload.password,
-                 "email": payload.email
-             }},
-            status_code=200
-        )
-    except Exception as e:
-        print(e)
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid credentials"
-        )
-
-@app.post("/register", status_code=201)
-async def register(payload: RegisterSchema):
-    try:
-        print("Registration attempt with:", payload)
-        user_data=payload.model_dump()
         return JSONResponse(
-            {"message": "Registration successful",
-             "user _data": {
-                 "username": user_data['username'],
-                 "email": user_data['email'],
-                 "password": user_data['password'],
-                 "confirm_password": user_data['confirm_password'],
-             }},
-            status_code=201
+            content={ 
+                "message": "Login successful",
+                "user_data": { 
+                    "username": payload.password,
+                    "email": payload.email
+                }
+            },
+            status_code=status.HTTP_200_OK
         )
-    except HTTPException as he:
-        raise he
     except Exception as e:
-        print(e)
+        print(str(e))
         raise HTTPException(
-            status_code=500,
-            detail="Registration failed"
-        )
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )  
+    
 
-@app.delete("/delete", status_code=200)
+#delete
+@app.delete("/delete", status_code=status.HTTP_200_OK)
 async def delete(payload: DeleteSchema):
     try:
         print("Logout attempt for user:", payload.user_id)
         return JSONResponse(
             {"message": "Logout successful"},
-            status_code=200
+            status_code=status.HTTP_200_OK
         )
     except Exception as e:
         print(e)
         raise HTTPException(
-            status_code=500,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Logout failed"
         )
+
+#update
 
 @app.put("/update", status_code=200)
 async def update(payload: UpdateSchema):
@@ -129,11 +120,11 @@ async def update(payload: UpdateSchema):
         print("Update attempt with:", payload)
         return JSONResponse(
             {"message": "Update successful"},
-            status_code=200,
+            status_code=status.HTTP_200_OK,
         )
     except Exception as e:
         print(e)
         raise HTTPException(
-            status_code=500,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Update failed"
         )

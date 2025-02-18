@@ -29,82 +29,6 @@ class AuthenticationError(APIError):
             headers={"WWW-Authenticate": "Bearer"}
         )
 
-class SimpleWebSocketProxy:
-    def __init__(self, target_url: str):
-        parsed = urlparse(target_url)
-        self.ws_url = f"ws://{parsed.netloc}{parsed.path}"
-        print(f"Target WebSocket URL: {self.ws_url}")
-
-    async def handle_message(self, data: Dict[str, Any], ws, client_ws: WebSocket):
-
-        try:
-            if "text" in data:
-                try:
-                    json_data = json.loads(data["text"])
-                    await ws.send_json(json_data)
-                    response = await ws.receive_text()
-                    await client_ws.send_text(response)
-                except json.JSONDecodeError:
-                    await ws.send_text(data["text"])
-                    response = await ws.receive_text()
-                    await client_ws.send_text(response)
-                    
-            elif "bytes" in data:
-                await ws.send_bytes(data["bytes"])
-                response = await ws.receive_bytes()
-                await client_ws.send_bytes(response)
-                
-            else:
-                error_msg = f"Unsupported message format: {data}"
-                await client_ws.send_json({
-                    "type": "error",
-                    "error": error_msg
-                })
-                
-        except Exception as e:
-            error_msg = f"Error processing message: {str(e)}"
-            await client_ws.send_json({
-                "type": "error",
-                "error": error_msg
-            })
-
-    async def proxy(self, client_ws: WebSocket):
-        """Main proxy method to handle WebSocket connections"""
-        print("Starting websocket proxy")
-        await client_ws.accept()
-        print("Client connection accepted")
-
-        async with httpx.AsyncClient() as client:
-            try:
-                async with aconnect_ws(self.ws_url, client) as ws:
-                    print("Connected to target service")
-                    
-                    while True:
-                        try:
-                            data = await client_ws.receive()
-                            print(f"Received message: {data}")
-                            await self.handle_message(data, ws, client_ws)
-                            
-                        except WebSocketDisconnect:
-                            print("Client disconnected")
-                            break
-                        except Exception as e:
-                            print(f"Error in message handling: {str(e)}")
-                            try:
-                                await client_ws.send_json({
-                                    "type": "error",
-                                    "error": str(e)
-                                })
-                            except:
-                                pass
-                            break
-                            
-            except Exception as e:
-                print(f"Connection error: {str(e)}")
-                try:
-                    await client_ws.close(code=1011)
-                except:
-                    pass   
 
 class Client:
     async def http_request(
@@ -155,6 +79,7 @@ class ModuleImporter:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+
 def route(
     request_method: Any,
     path: str,
@@ -165,29 +90,12 @@ def route(
     payload_key: Optional[str] = None,
 ):
 
-    if getattr(request_method, '__name__', '').lower() == 'websocket':
-        def websocket_wrapper(func):
-            @request_method(path)
-            async def inner(websocket: WebSocket):
-                print("New websocket connection request")
-                try:
-                    proxy = SimpleWebSocketProxy(service_url)
-                    await proxy.proxy(websocket)
-                except Exception as e:
-                    print(f"WebSocket error: {str(e)}")
-                    try:
-                        await websocket.close(code=1011)
-                    except:
-                        pass
-            return inner
-        return websocket_wrapper
-
-
     real_link = request_method(
         path,
         status_code=status_code
     )
     client = Client()
+
 
     def wrapper(func):
         @real_link
@@ -219,6 +127,8 @@ def route(
 
         return inner
     return wrapper
+
+
 
 async def process_payload(payload_key: str, kwargs: Dict[str, Any], form_data: bool = False) -> Optional[Any]:
     try:

@@ -4,11 +4,9 @@ class LoginSchema(BaseModel):
     email: EmailStr
     password: str = Field(min_length=6)
 
-class RegisterSchema(BaseModel):
-    username: str = Field(min_length=3)
-    email: EmailStr
-    password: str = Field(min_length=6)
-    confirm_password: str = Field(min_length=6)
+class Multi_query(BaseModel):
+    name:str
+    values:str
 
 class DeleteSchema(BaseModel):
     user_id: int
